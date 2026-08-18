@@ -4,11 +4,11 @@ Run this whenever a source's DAG file is added or changes:
 
     uv run python generate_protein_maps.py
 
-The dashboard reads the generated CSVs at runtime; it never parses DAG files
-directly (see data.load_run_protein_map).
+build_dashboard_data.py reads the generated CSVs; it never parses DAG files
+directly (see build_dashboard_data.load_run_protein_map).
 """
 
-from data import SOURCES, parse_protein_map
+from build_dashboard_data import SOURCES, parse_protein_map
 
 
 def main() -> None:
