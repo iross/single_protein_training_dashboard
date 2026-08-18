@@ -44,3 +44,35 @@ app).
 to `main`.
 
 One-time setup for a new repo: Settings → Pages → Source → "GitHub Actions".
+
+## Updating data
+
+**Refreshing existing sources** (new checkpoints appended to the same databases): replace
+`data/provenance.db` and/or `data/mixed.db` with updated copies, then:
+
+```
+just build-data   # regenerates data/dashboard_data.csv from the new .db files
+just check        # confirms the app still renders with the new data
+```
+
+**Adding a new experiment/source**:
+
+1. Drop the new `.db` and `.dag` files into `data/`.
+2. Add an entry to `SOURCES` in `build_dashboard_data.py` (db_path, dag_path, experiment name).
+3. `just protein-map` — parses the new DAG into `data/run_protein_map_<experiment>.csv`.
+4. `just build-data && just check` to verify.
+
+**Publishing**: direct pushes to `main` are blocked, so go through a branch + PR:
+
+```
+git checkout -b update-data
+git add data/ build_dashboard_data.py   # whatever changed
+git commit -m "..."
+git push -u origin update-data
+gh pr create --fill
+gh pr merge --merge --delete-branch     # after CI is green
+```
+
+Merging to `main` is the trigger — `deploy-pages.yml` fires automatically, rebuilds
+`dashboard_data.csv` from whatever `.db` files are on `main`, and republishes to the same
+URL. No manual deploy step.
