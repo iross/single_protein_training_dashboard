@@ -1,10 +1,15 @@
 """Plotly figure builders for the training-metrics dashboard.
 
-Color always encodes protein; line dash always encodes training_strategy
-("solid" = device_constrained, "dash" = mixed). With only one strategy
-present in the data, every line/ribbon renders solid and the dash encoding
-is inert until a second experiment is added.
+Protein sets the base hue, reused across all three charts. Training strategy
+modulates that same hue's lightness (device_constrained = full saturation,
+mixed = lightened toward white) *and* line dash, so two strategies for the
+same protein are clearly distinguishable by color, not just a subtle dash
+difference. With only one strategy present in the data, every line/ribbon
+renders at full saturation and the strategy encoding is inert until a second
+experiment is added.
 """
+
+import re
 
 import numpy as np
 import pandas as pd
@@ -15,14 +20,30 @@ from plotly.subplots import make_subplots
 _PALETTE = pc.qualitative.Set2 + pc.qualitative.Set3
 _KNOWN_PROTEIN_ORDER = ["avgfp", "dlg4", "gb1", "grb2", "pab1", "pten", "tem-1", "ube4b"]
 STRATEGY_DASH = {"device_constrained": "solid", "mixed": "dash"}
+STRATEGY_LIGHTEN = {"device_constrained": 0.0, "mixed": 0.55}
 METRIC_LABELS = {"test_loss": "Test loss", "pearson_total_score": "Pearson total score"}
+_RGB_RE = re.compile(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)")
 
 
 def protein_color_map(proteins: list[str]) -> dict[str, str]:
-    """Assign each protein a stable color, reused across all three charts."""
+    """Assign each protein a stable base color, reused across all three charts."""
     ordered = [p for p in _KNOWN_PROTEIN_ORDER if p in proteins]
     ordered += sorted(p for p in proteins if p not in _KNOWN_PROTEIN_ORDER)
     return {p: _PALETTE[i % len(_PALETTE)] for i, p in enumerate(ordered)}
+
+
+def _lighten(color: str, factor: float) -> str:
+    """Blend an rgb(...) color toward white by `factor` (0=unchanged, 1=white)."""
+    match = _RGB_RE.match(color)
+    if not match or factor <= 0:
+        return color
+    r, g, b = (round(int(c) + (255 - int(c)) * factor) for c in match.groups())
+    return f"rgb({r},{g},{b})"
+
+
+def _color_for(protein_base_color: str, strategy: str) -> str:
+    """Protein sets the hue; strategy lightens it so experiments stay distinct."""
+    return _lighten(protein_base_color, STRATEGY_LIGHTEN.get(strategy, 0.3))
 
 
 def _dash_for(strategy: str) -> str:
@@ -54,10 +75,14 @@ def spaghetti_fig(
                     x=run_df["epoch"],
                     y=run_df[metric],
                     mode="lines",
-                    line=dict(color=colors[protein], dash=_dash_for(strategy), width=1),
+                    line=dict(
+                        color=_color_for(colors[protein], strategy),
+                        dash=_dash_for(strategy),
+                        width=1,
+                    ),
                     opacity=0.35,
-                    legendgroup=protein,
-                    name=protein,
+                    legendgroup=f"{protein}-{strategy}",
+                    name=f"{protein} ({strategy})",
                     showlegend=first_run,
                     customdata=run_df[["run_id", "protein", "training_strategy", "experiment",
                                        "hostname", "gpu_model", "duration_s"]],
@@ -76,7 +101,7 @@ def spaghetti_fig(
         title=f"{METRIC_LABELS[metric]} per run, by epoch",
         xaxis_title="Epoch",
         yaxis_title=METRIC_LABELS[metric],
-        legend_title="Protein",
+        legend_title="Protein / strategy",
     )
     return fig
 
@@ -106,9 +131,13 @@ def trend_fig(
                 x=group["epoch"],
                 y=group["mean"],
                 mode="lines+markers",
-                line=dict(color=colors[protein], dash=_dash_for(strategy), width=2.5),
+                line=dict(
+                    color=_color_for(colors[protein], strategy),
+                    dash=_dash_for(strategy),
+                    width=2.5,
+                ),
                 name=f"{protein} ({strategy})",
-                legendgroup=protein,
+                legendgroup=f"{protein}-{strategy}",
                 customdata=group[["std", "n", "min", "max"]],
                 hovertemplate=(
                     "epoch=%{x}<br>mean=%{y:.4f}<br>std=%{customdata[0]:.4f}<br>"
@@ -141,7 +170,8 @@ def variance_fig(
 
     for (protein, strategy), group in stats.groupby(["protein", "training_strategy"]):
         group = group.sort_values("epoch")
-        color = colors[protein]
+        color = _color_for(colors[protein], strategy)
+        legendgroup = f"{protein}-{strategy}"
         upper = group["mean"] + group["std"]
         lower = group["mean"] - group["std"]
 
@@ -149,7 +179,7 @@ def variance_fig(
             go.Scatter(
                 x=group["epoch"], y=upper, mode="lines",
                 line=dict(width=0), showlegend=False, hoverinfo="skip",
-                legendgroup=protein,
+                legendgroup=legendgroup,
             ),
             row=1, col=1,
         )
@@ -160,7 +190,7 @@ def variance_fig(
                 fillcolor=color.replace("rgb", "rgba").replace(")", ",0.2)")
                 if color.startswith("rgb") else color,
                 opacity=0.2, showlegend=False, hoverinfo="skip",
-                legendgroup=protein,
+                legendgroup=legendgroup,
             ),
             row=1, col=1,
         )
@@ -168,7 +198,7 @@ def variance_fig(
             go.Scatter(
                 x=group["epoch"], y=group["mean"], mode="lines",
                 line=dict(color=color, dash=_dash_for(strategy), width=2.5),
-                name=f"{protein} ({strategy})", legendgroup=protein,
+                name=f"{protein} ({strategy})", legendgroup=legendgroup,
                 customdata=group[["std", "n"]],
                 hovertemplate=(
                     "epoch=%{x}<br>mean=%{y:.4f}<br>std=%{customdata[0]:.4f}<br>"
@@ -185,7 +215,7 @@ def variance_fig(
             go.Scatter(
                 x=group["epoch"], y=cv, mode="lines",
                 line=dict(color=color, dash=_dash_for(strategy), width=2),
-                name=f"{protein} ({strategy})", legendgroup=protein, showlegend=False,
+                name=f"{protein} ({strategy})", legendgroup=legendgroup, showlegend=False,
                 hovertemplate="epoch=%{x}<br>CV=%{y:.3f}<extra>" + protein + " / " + strategy + "</extra>",
             ),
             row=2, col=1,

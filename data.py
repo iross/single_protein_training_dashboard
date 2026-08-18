@@ -12,12 +12,18 @@ import pandas as pd
 import streamlit as st
 
 REPO_ROOT = Path(__file__).parent
+DATA_DIR = REPO_ROOT / "data"
 
 SOURCES = [
     {
-        "db_path": REPO_ROOT / "provenance.db",
-        "dag_path": REPO_ROOT / "many_protein_pretraining_with_ospool_device_constrained_runs.dag",
+        "db_path": DATA_DIR / "provenance.db",
+        "dag_path": DATA_DIR / "many_protein_pretraining_with_ospool_device_constrained_runs.dag",
         "experiment": "device_constrained",
+    },
+    {
+        "db_path": DATA_DIR / "mixed.db",
+        "dag_path": DATA_DIR / "many_protein_pretraining_with_ospool.dag",
+        "experiment": "heterogeneous",
     },
     # future: {"db_path": ..., "dag_path": ..., "experiment": "mixed"},
 ]
@@ -127,7 +133,7 @@ def load_run_protein_map(experiment: str) -> pd.DataFrame:
     Regenerate with `python generate_protein_maps.py` if a source's DAG file
     changes — this reads the checked-in CSV, it does not parse the DAG file.
     """
-    path = REPO_ROOT / f"run_protein_map_{experiment}.csv"
+    path = DATA_DIR / f"run_protein_map_{experiment}.csv"
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found. Run `python generate_protein_maps.py` first."
