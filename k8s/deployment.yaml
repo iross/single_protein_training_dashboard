@@ -1,0 +1,77 @@
+# Reference manifest for the cluster's GitOps repo — adjust namespace, resources,
+# and ingress details to match your environment before applying.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: single-protein-training-dashboard
+  labels:
+    app: single-protein-training-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: single-protein-training-dashboard
+  template:
+    metadata:
+      labels:
+        app: single-protein-training-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          # Bump this tag (or point image automation at it) whenever
+          # build-image.yml pushes a new build. Also tagged with the git
+          # short SHA if you'd rather pin to an exact commit.
+          image: hub.osg-htc.org/xdd/single_protein_training_dashboard:latest
+          ports:
+            - containerPort: 8501
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: single-protein-training-dashboard
+spec:
+  selector:
+    app: single-protein-training-dashboard
+  ports:
+    - port: 80
+      targetPort: 8501
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: single-protein-training-dashboard
+  annotations: {}
+    # e.g. cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: CHANGEME
+  rules:
+    - host: CHANGEME.example.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: single-protein-training-dashboard
+                port:
+                  number: 80
+  # tls:
+  #   - hosts: [CHANGEME.example.org]
+  #     secretName: single-protein-training-dashboard-tls

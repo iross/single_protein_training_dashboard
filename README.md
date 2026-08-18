@@ -24,26 +24,32 @@ All source data lives under `data/`:
   (`data.py`). Regenerate with `just build-data` after changing a source's database.
 
 The app itself (`app.py`, `charts.py`, `data.py`) only ever reads `dashboard_data.csv` — it
-has no DuckDB/SQLite dependency. That's what lets it run unmodified in the browser via
-stlite (see Deployment), which can't load DuckDB's SQLite extension.
+has no DuckDB/SQLite dependency at request time. `Dockerfile` runs
+`build_dashboard_data.py` at image build time, so the deployed container never needs the
+raw databases either.
 
 ## Deployment
 
-The app is published as a static site on GitHub Pages using
-[stlite](https://github.com/whitphx/stlite), which runs the real Streamlit app client-side
-in the browser via Pyodide (WASM) — no server, no third-party hosting account, no OAuth app
-installed on this GitHub account.
+The app runs as a normal containerized Streamlit server, deployed to a Kubernetes cluster
+via GitOps — no third-party hosting account or OAuth app involved.
 
-`.github/workflows/deploy-pages.yml` runs on every push to `main`: it rebuilds
-`dashboard_data.csv` from the databases, assembles `index.html` + `app.py` + `charts.py` +
-`data.py` + `data/dashboard_data.csv` into a `dist/` directory, and deploys it via GitHub's
-own `actions/deploy-pages` (authenticated with the workflow's built-in token, not an external
-app).
+- `Dockerfile` builds an image with `dashboard_data.csv` baked in (see above). Test it
+  locally with `docker build -t single-protein-training-dashboard . && docker run -p
+  8501:8501 single-protein-training-dashboard`.
+- `.github/workflows/build-image.yml` builds and pushes the image to
+  `hub.osg-htc.org/xdd/single_protein_training_dashboard` on every push to `main`, tagged
+  `latest` and with the git short SHA. Push credentials come from the `HARBOR_USERNAME` /
+  `HARBOR_PASSWORD` repo secrets (a Harbor robot account).
+- `k8s/deployment.yaml` is a reference Deployment/Service/Ingress — copy it into the
+  cluster's GitOps repo (adjust namespace, ingress host/class, resource limits) and let
+  Argo CD/Flux reconcile it. This repo doesn't push to the GitOps repo itself.
+- `.github/workflows/ci.yml` runs the headless smoke test (`just check`) on every push and
+  PR to `main`.
 
-`.github/workflows/ci.yml` runs the headless smoke test (`just check`) on every push and PR
-to `main`.
-
-One-time setup for a new repo: Settings → Pages → Source → "GitHub Actions".
+Getting a new image rolled out is two steps: this repo's workflow publishes the image, then
+the GitOps controller needs to pick up the new tag — either via image automation (Argo CD
+Image Updater / Flux image-reflector) watching the registry, or by bumping the tag in the
+manifests repo by hand.
 
 ## Updating data
 
@@ -73,6 +79,5 @@ gh pr create --fill
 gh pr merge --merge --delete-branch     # after CI is green
 ```
 
-Merging to `main` is the trigger — `deploy-pages.yml` fires automatically, rebuilds
-`dashboard_data.csv` from whatever `.db` files are on `main`, and republishes to the same
-URL. No manual deploy step.
+Merging to `main` rebuilds and pushes a new image with the updated data (see Deployment) —
+but the running deployment won't update until the GitOps controller rolls out the new tag.
