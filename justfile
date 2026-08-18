@@ -15,8 +15,12 @@ run: sync
 protein-map: sync
     uv run python generate_protein_maps.py
 
-# Headless smoke test: run app.py via Streamlit's AppTest API, no browser needed
-check: sync
+# Rebuild data/dashboard_data.csv from the raw databases and protein maps
+build-data: sync
+    uv run python build_dashboard_data.py
+
+# Headless smoke test: rebuild data, then run app.py via Streamlit's AppTest API
+check: build-data
     uv run python -c "\
     from streamlit.testing.v1 import AppTest; \
     at = AppTest.from_file('app.py', default_timeout=60); \

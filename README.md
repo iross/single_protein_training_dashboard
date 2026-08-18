@@ -13,21 +13,34 @@ just check  # headless smoke test
 
 All source data lives under `data/`:
 
-- `provenance.db`, `mixed.db` — per-checkpoint metrics (DuckDB reads these SQLite files at
-  query time via `data.py`).
+- `provenance.db`, `mixed.db` — per-checkpoint metrics (read at build time by
+  `build_dashboard_data.py`, which queries them via DuckDB's SQLite extension).
 - `*.dag` — HTCondor DAG files, parsed only by `generate_protein_maps.py` to regenerate the
-  run_id -> protein CSVs below. Not read at app runtime.
-- `run_protein_map_*.csv` — pre-generated run_id -> protein lookups, read by the app at
-  runtime. Regenerate with `just protein-map` after changing a source's DAG file.
+  run_id -> protein CSVs below. Not read at build or app runtime.
+- `run_protein_map_*.csv` — pre-generated run_id -> protein lookups, read by
+  `build_dashboard_data.py`. Regenerate with `just protein-map` after changing a source's
+  DAG file.
+- `dashboard_data.csv` — the combined, precomputed table the app actually reads
+  (`data.py`). Regenerate with `just build-data` after changing a source's database.
+
+The app itself (`app.py`, `charts.py`, `data.py`) only ever reads `dashboard_data.csv` — it
+has no DuckDB/SQLite dependency. That's what lets it run unmodified in the browser via
+stlite (see Deployment), which can't load DuckDB's SQLite extension.
 
 ## Deployment
 
-The app is hosted on [Streamlit Community Cloud](https://share.streamlit.io), connected to
-this repo's `main` branch. Community Cloud watches the branch directly and redeploys
-automatically on every push — no GitHub Action is needed for the deploy step itself.
+The app is published as a static site on GitHub Pages using
+[stlite](https://github.com/whitphx/stlite), which runs the real Streamlit app client-side
+in the browser via Pyodide (WASM) — no server, no third-party hosting account, no OAuth app
+installed on this GitHub account.
+
+`.github/workflows/deploy-pages.yml` runs on every push to `main`: it rebuilds
+`dashboard_data.csv` from the databases, assembles `index.html` + `app.py` + `charts.py` +
+`data.py` + `data/dashboard_data.csv` into a `dist/` directory, and deploys it via GitHub's
+own `actions/deploy-pages` (authenticated with the workflow's built-in token, not an external
+app).
 
 `.github/workflows/ci.yml` runs the headless smoke test (`just check`) on every push and PR
-to `main`, so breakage is caught before it reaches the live app.
+to `main`.
 
-One-time setup for a new deployment target: go to share.streamlit.io, connect this repo, and
-point it at `app.py` on `main`.
+One-time setup for a new repo: Settings → Pages → Source → "GitHub Actions".

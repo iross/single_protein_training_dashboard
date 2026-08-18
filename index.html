@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Training metrics dashboard</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@stlite/browser@1.8.1/build/stlite.css"
+    />
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@1.8.1/build/stlite.js";
+
+      mount(
+        {
+          // plotly pinned to 5.x: mixing it with altair (a Streamlit dependency)
+          // trips a known micropip resolution bug in Pyodide — see
+          // https://github.com/whitphx/stlite#known-limitations
+          requirements: ["pandas", "numpy", "plotly==5.24.1"],
+          entrypoint: "app.py",
+          files: {
+            "app.py": { url: "./app.py" },
+            "charts.py": { url: "./charts.py" },
+            "data.py": { url: "./data.py" },
+            "data/dashboard_data.csv": { url: "./data/dashboard_data.csv" },
+          },
+        },
+        document.getElementById("root")
+      );
+    </script>
+  </body>
+</html>
