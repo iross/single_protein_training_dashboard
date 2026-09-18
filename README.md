@@ -13,10 +13,12 @@ just check  # headless smoke test
 
 All source data lives under `data/`:
 
-- `provenance.db`, `mixed.db` — per-checkpoint metrics (read at build time by
+- `provenance.db`, `mixed.db`, `dgxspark.db` — per-checkpoint metrics (read at build time by
   `build_dashboard_data.py`, which queries them via DuckDB's SQLite extension).
 - `*.dag` — HTCondor DAG files, parsed only by `generate_protein_maps.py` to regenerate the
-  run_id -> protein CSVs below. Not read at build or app runtime.
+  run_id -> protein CSVs below. Not read at build or app runtime. `dgxspark.db` has no DAG
+  file (it reruns the device_constrained avgfp job slots on DGX Spark hardware), so its
+  protein map is hand-written instead.
 - `run_protein_map_*.csv` — pre-generated run_id -> protein lookups, read by
   `build_dashboard_data.py`. Regenerate with `just protein-map` after changing a source's
   DAG file.
@@ -53,8 +55,19 @@ manifests repo by hand.
 
 ## Updating data
 
-**Refreshing existing sources** (new checkpoints appended to the same databases): replace
-`data/provenance.db` and/or `data/mixed.db` with updated copies, then:
+**Pulling fresh databases from ap2002**: the `mldag-query db build` commands in
+`data_compilation.md` regenerate each source's `.db` from its checkpoint directory on
+ap2002. `just update-data` runs them over SSH and scps the results into `data/`:
+
+```
+just update-data  # ssh to ap2002, rebuild provenance.db/mixed.db/dgxspark.db, scp them down
+just build-data   # regenerates data/dashboard_data.csv from the new .db files
+just check        # confirms the app still renders with the new data
+```
+
+**Refreshing existing sources by hand** (new checkpoints appended to the same databases):
+replace `data/provenance.db`, `data/mixed.db`, and/or `data/dgxspark.db` with updated
+copies, then:
 
 ```
 just build-data   # regenerates data/dashboard_data.csv from the new .db files

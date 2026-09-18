@@ -13,6 +13,8 @@ from build_dashboard_data import SOURCES, parse_protein_map
 
 def main() -> None:
     for source in SOURCES:
+        if source["dag_path"] is None:
+            continue
         df = parse_protein_map(source["dag_path"])
         out_path = source["dag_path"].parent / f"run_protein_map_{source['experiment']}.csv"
         df.to_csv(out_path, index=False)
