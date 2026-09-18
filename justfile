@@ -19,6 +19,21 @@ protein-map: sync
 build-data: sync
     uv run python build_dashboard_data.py
 
+# Rebuild the raw provenance databases on ap2002 (see data_compilation.md) and scp them down
+update-data:
+    ssh ap2002 ' \
+        set -euo pipefail && \
+        cd ~/single_protein_models_gpu_device_constrained && \
+        uv run mldag-query db build --checkpoint-dir /staging/i/iaross/single_protein_models_gpu_device_constrained --db provenance.db && \
+        cd ~/single_protein_models_with_ospool && \
+        uv run mldag-query db build --checkpoint-dir /staging/i/iaross/single_protein_checkpoints_with_ospool --db mixed.db && \
+        cd ~/single_protein_models_dgxspark && \
+        uv run mldag-query db build --checkpoint-dir /staging/i/iaross/single_protein_models_dgxspark --db dgxspark.db \
+    '
+    scp ap2002:~/single_protein_models_gpu_device_constrained/provenance.db data/provenance.db
+    scp ap2002:~/single_protein_models_with_ospool/mixed.db data/mixed.db
+    scp ap2002:~/single_protein_models_dgxspark/dgxspark.db data/dgxspark.db
+
 # Headless smoke test: rebuild data, then run app.py via Streamlit's AppTest API
 check: build-data
     uv run python -c "\
