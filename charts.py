@@ -2,11 +2,9 @@
 
 Protein sets the base hue, reused across all three charts. Training strategy
 modulates that same hue's lightness (device_constrained = full saturation,
-mixed = lightened toward white) *and* line dash, so two strategies for the
-same protein are clearly distinguishable by color, not just a subtle dash
-difference. With only one strategy present in the data, every line/ribbon
-renders at full saturation and the strategy encoding is inert until a second
-experiment is added.
+dgx_spark = partly lightened, mixed = lightened furthest toward white) *and*
+line dash, so strategies for the same protein are clearly distinguishable by
+color, not just a subtle dash difference.
 """
 
 import re
@@ -19,8 +17,8 @@ from plotly.subplots import make_subplots
 
 _PALETTE = pc.qualitative.Set2 + pc.qualitative.Set3
 _KNOWN_PROTEIN_ORDER = ["avgfp", "dlg4", "gb1", "grb2", "pab1", "pten", "tem-1", "ube4b"]
-STRATEGY_DASH = {"device_constrained": "solid", "mixed": "dash"}
-STRATEGY_LIGHTEN = {"device_constrained": 0.0, "mixed": 0.55}
+STRATEGY_DASH = {"device_constrained": "solid", "mixed": "dash", "dgx_spark": "dot"}
+STRATEGY_LIGHTEN = {"device_constrained": 0.0, "mixed": 0.55, "dgx_spark": 0.3}
 METRIC_LABELS = {"test_loss": "Test loss", "pearson_total_score": "Pearson total score"}
 _RGB_RE = re.compile(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)")
 
@@ -43,11 +41,11 @@ def _lighten(color: str, factor: float) -> str:
 
 def _color_for(protein_base_color: str, strategy: str) -> str:
     """Protein sets the hue; strategy lightens it so experiments stay distinct."""
-    return _lighten(protein_base_color, STRATEGY_LIGHTEN.get(strategy, 0.3))
+    return _lighten(protein_base_color, STRATEGY_LIGHTEN[strategy])
 
 
 def _dash_for(strategy: str) -> str:
-    return STRATEGY_DASH.get(strategy, "dot")
+    return STRATEGY_DASH[strategy]
 
 
 def _filter(df: pd.DataFrame, metric: str, proteins: list[str], strategies: list[str]) -> pd.DataFrame:

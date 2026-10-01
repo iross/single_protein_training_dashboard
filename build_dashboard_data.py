@@ -45,9 +45,12 @@ SOURCES = [
         "experiment": "heterogeneous",
     },
     {
+        # Labeled with its own training strategy instead of being classified
+        # by GPU model variance.
         "db_path": DATA_DIR / "dgxspark.db",
         "dag_paths": [DATA_DIR / "many_protein_pretraining_dgx_spark.dag"],
         "experiment": "dgxspark",
+        "training_strategy": "dgx_spark",
     },
     {
         "db_path": DATA_DIR / "metl_updates.db",
@@ -193,7 +196,9 @@ def build_dashboard_data() -> tuple[pd.DataFrame, int]:
     n_unmapped = 0
     for source in SOURCES:
         metrics = load_metrics(source["db_path"])
-        metrics["training_strategy"] = classify_training_strategy(metrics)
+        metrics["training_strategy"] = source.get(
+            "training_strategy", classify_training_strategy(metrics)
+        )
         metrics["experiment"] = source["experiment"]
 
         protein_map = load_run_protein_map(source["experiment"])
