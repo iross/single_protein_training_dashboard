@@ -32,9 +32,15 @@ if not selected_proteins or not selected_strategies:
     st.info("Select at least one protein and one training strategy in the sidebar.")
     st.stop()
 
-tabs = st.tabs([charts.METRIC_LABELS["test_loss"], charts.METRIC_LABELS["pearson_total_score"]])
+tabs = st.tabs(
+    [
+        charts.METRIC_LABELS["test_loss"],
+        charts.METRIC_LABELS["pearson_total_score"],
+        "Training progress",
+    ]
+)
 
-for tab, metric in zip(tabs, ["test_loss", "pearson_total_score"]):
+for tab, metric in zip(tabs[:2], ["test_loss", "pearson_total_score"]):
     with tab:
         st.subheader("Per-run trajectories")
         st.plotly_chart(
@@ -53,3 +59,10 @@ for tab, metric in zip(tabs, ["test_loss", "pearson_total_score"]):
             charts.variance_fig(df, metric, selected_proteins, selected_strategies),
             width="stretch",
         )
+
+with tabs[2]:
+    st.subheader("Cumulative epochs completed over time")
+    st.plotly_chart(
+        charts.epochs_over_time_fig(df, selected_proteins, selected_strategies),
+        width="stretch",
+    )

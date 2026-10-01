@@ -60,7 +60,8 @@ METRICS_QUERY = """
         duration_s,
         val_loss,
         train_loss_epoch,
-        checkpoint_path
+        checkpoint_path,
+        produced_at_ts
     FROM checkpoints
     WHERE training_json IS NOT NULL
     QUALIFY row_number() OVER (
