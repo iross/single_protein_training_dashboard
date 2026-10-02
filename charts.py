@@ -2,11 +2,9 @@
 
 Protein sets the base hue, reused across all three charts. Training strategy
 modulates that same hue's lightness (device_constrained = full saturation,
-mixed = lightened toward white) *and* line dash, so two strategies for the
-same protein are clearly distinguishable by color, not just a subtle dash
-difference. With only one strategy present in the data, every line/ribbon
-renders at full saturation and the strategy encoding is inert until a second
-experiment is added.
+dgx_spark = partly lightened, mixed = lightened furthest toward white) *and*
+line dash, so strategies for the same protein are clearly distinguishable by
+color, not just a subtle dash difference.
 """
 
 import re
@@ -19,8 +17,8 @@ from plotly.subplots import make_subplots
 
 _PALETTE = pc.qualitative.Set2 + pc.qualitative.Set3
 _KNOWN_PROTEIN_ORDER = ["avgfp", "dlg4", "gb1", "grb2", "pab1", "pten", "tem-1", "ube4b"]
-STRATEGY_DASH = {"device_constrained": "solid", "mixed": "dash"}
-STRATEGY_LIGHTEN = {"device_constrained": 0.0, "mixed": 0.55}
+STRATEGY_DASH = {"device_constrained": "solid", "mixed": "dash", "dgx_spark": "dot"}
+STRATEGY_LIGHTEN = {"device_constrained": 0.0, "mixed": 0.55, "dgx_spark": 0.3}
 METRIC_LABELS = {"test_loss": "Test loss", "pearson_total_score": "Pearson total score"}
 _RGB_RE = re.compile(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)")
 
@@ -43,11 +41,11 @@ def _lighten(color: str, factor: float) -> str:
 
 def _color_for(protein_base_color: str, strategy: str) -> str:
     """Protein sets the hue; strategy lightens it so experiments stay distinct."""
-    return _lighten(protein_base_color, STRATEGY_LIGHTEN.get(strategy, 0.3))
+    return _lighten(protein_base_color, STRATEGY_LIGHTEN[strategy])
 
 
 def _dash_for(strategy: str) -> str:
-    return STRATEGY_DASH.get(strategy, "dot")
+    return STRATEGY_DASH[strategy]
 
 
 def _filter(df: pd.DataFrame, metric: str, proteins: list[str], strategies: list[str]) -> pd.DataFrame:
@@ -61,14 +59,20 @@ def _filter(df: pd.DataFrame, metric: str, proteins: list[str], strategies: list
 def spaghetti_fig(
     df: pd.DataFrame, metric: str, proteins: list[str], strategies: list[str]
 ) -> go.Figure:
-    """One line per run, colored by protein, dashed by training strategy."""
+    """One line per run, colored by protein, dashed by training strategy.
+
+    Runs are keyed by (experiment, run_id) rather than run_id alone -- the
+    8-character run_ids are generated independently per source and can
+    collide across experiments, which would otherwise splice two unrelated
+    runs' checkpoints into a single line.
+    """
     filtered = _filter(df, metric, proteins, strategies)
     colors = protein_color_map(proteins)
     fig = go.Figure()
 
     for (protein, strategy), group in filtered.groupby(["protein", "training_strategy"]):
         first_run = True
-        for run_id, run_df in group.groupby("run_id"):
+        for (experiment, run_id), run_df in group.groupby(["experiment", "run_id"]):
             run_df = run_df.sort_values("epoch")
             fig.add_trace(
                 go.Scatter(
@@ -101,6 +105,66 @@ def spaghetti_fig(
         title=f"{METRIC_LABELS[metric]} per run, by epoch",
         xaxis_title="Epoch",
         yaxis_title=METRIC_LABELS[metric],
+        legend_title="Protein / strategy",
+    )
+    return fig
+
+
+def epochs_over_time_fig(df: pd.DataFrame, proteins: list[str], strategies: list[str]) -> go.Figure:
+    """Cumulative epochs completed over time: one step line per run.
+
+    Runs are keyed by (experiment, run_id) rather than run_id alone -- the
+    8-character run_ids are generated independently per source and collide
+    across experiments (and occasionally within the same protein/strategy),
+    so run_id alone would silently splice two unrelated runs into one line.
+
+    Each run's line uses line_shape="hv" and stops at its last checkpoint,
+    so a completed run holds its final value only up to that point rather
+    than extending a flat line across the rest of the time axis.
+    """
+    filtered = df[
+        df["protein"].isin(proteins)
+        & df["training_strategy"].isin(strategies)
+        & df["produced_at_ts"].notna()
+    ].copy()
+    filtered["epochs_complete"] = filtered["epoch"] + 1
+    colors = protein_color_map(proteins)
+    fig = go.Figure()
+
+    for (protein, strategy), group in filtered.groupby(["protein", "training_strategy"]):
+        first_run = True
+        for (experiment, run_id), run_df in group.groupby(["experiment", "run_id"]):
+            run_df = run_df.sort_values("produced_at_ts")
+            cumulative = run_df["epochs_complete"].cummax()
+            fig.add_trace(
+                go.Scatter(
+                    x=run_df["produced_at_ts"],
+                    y=cumulative,
+                    mode="lines",
+                    line_shape="hv",
+                    line=dict(
+                        color=_color_for(colors[protein], strategy),
+                        dash=_dash_for(strategy),
+                        width=1,
+                    ),
+                    opacity=0.35,
+                    legendgroup=f"{protein}-{strategy}",
+                    name=f"{protein} ({strategy})",
+                    showlegend=first_run,
+                    customdata=run_df[["run_id", "protein", "training_strategy", "experiment"]],
+                    hovertemplate=(
+                        "run_id=%{customdata[0]}<br>protein=%{customdata[1]}<br>"
+                        "strategy=%{customdata[2]}<br>experiment=%{customdata[3]}<br>"
+                        "time=%{x}<br>epochs complete=%{y}<extra></extra>"
+                    ),
+                )
+            )
+            first_run = False
+
+    fig.update_layout(
+        title="Cumulative epochs completed over time",
+        xaxis_title="Time",
+        yaxis_title="Epochs completed",
         legend_title="Protein / strategy",
     )
     return fig

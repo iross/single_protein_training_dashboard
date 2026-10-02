@@ -30,6 +30,6 @@ def get_dashboard_data() -> tuple[pd.DataFrame, int]:
         raise FileNotFoundError(
             f"{path} not found. Run `python build_dashboard_data.py` first."
         )
-    df = pd.read_csv(path, dtype={"run_id": str})
+    df = pd.read_csv(path, dtype={"run_id": str}, parse_dates=["produced_at_ts"])
     n_unmapped = int((df["protein"] == "unmapped").sum())
     return df, n_unmapped

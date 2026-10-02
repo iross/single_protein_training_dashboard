@@ -13,15 +13,18 @@ just check  # headless smoke test
 
 All source data lives under `data/`:
 
-- `provenance.db`, `mixed.db`, `dgxspark.db` — per-checkpoint metrics (read at build time by
-  `build_dashboard_data.py`, which queries them via DuckDB's SQLite extension).
+- `provenance.db`, `mixed.db`, `dgxspark.db`, `metl_updates.db` — per-checkpoint metrics (read
+  at build time by `build_dashboard_data.py`, which queries them via DuckDB's SQLite
+  extension).
 - `*.dag` — HTCondor DAG files, parsed only by `generate_protein_maps.py` to regenerate the
-  run_id -> protein CSVs below. Not read at build or app runtime. `dgxspark.db` has no DAG
-  file (it reruns the device_constrained avgfp job slots on DGX Spark hardware), so its
-  protein map is hand-written instead.
+  run_id -> protein CSVs below. Not read at build or app runtime. A source can have several
+  DAGs (e.g. a `_run2.dag` rerun); `just update-data` pulls all of them from ap2002.
+- `protein_map_*.csv` — hand-written run_id -> protein lookups for runs whose DAG file no
+  longer exists (listed under a source's `extra_protein_maps`), merged in by
+  `generate_protein_maps.py`.
 - `run_protein_map_*.csv` — pre-generated run_id -> protein lookups, read by
   `build_dashboard_data.py`. Regenerate with `just protein-map` after changing a source's
-  DAG file.
+  DAG files.
 - `dashboard_data.csv` — the combined, precomputed table the app actually reads
   (`data.py`). Regenerate with `just build-data` after changing a source's database.
 
@@ -60,14 +63,14 @@ manifests repo by hand.
 ap2002. `just update-data` runs them over SSH and scps the results into `data/`:
 
 ```
-just update-data  # ssh to ap2002, rebuild provenance.db/mixed.db/dgxspark.db, scp them down
+just update-data  # ssh to ap2002, rebuild every source .db, scp them and the DAGs down
 just build-data   # regenerates data/dashboard_data.csv from the new .db files
 just check        # confirms the app still renders with the new data
 ```
 
 **Refreshing existing sources by hand** (new checkpoints appended to the same databases):
-replace `data/provenance.db`, `data/mixed.db`, and/or `data/dgxspark.db` with updated
-copies, then:
+replace `data/provenance.db`, `data/mixed.db`, `data/dgxspark.db`, and/or
+`data/metl_updates.db` with updated copies, then:
 
 ```
 just build-data   # regenerates data/dashboard_data.csv from the new .db files
@@ -77,7 +80,7 @@ just check        # confirms the app still renders with the new data
 **Adding a new experiment/source**:
 
 1. Drop the new `.db` and `.dag` files into `data/`.
-2. Add an entry to `SOURCES` in `build_dashboard_data.py` (db_path, dag_path, experiment name).
+2. Add an entry to `SOURCES` in `build_dashboard_data.py` (db_path, dag_paths, experiment name).
 3. `just protein-map` — parses the new DAG into `data/run_protein_map_<experiment>.csv`.
 4. `just build-data && just check` to verify.
 
