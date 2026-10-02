@@ -186,13 +186,15 @@ def spaghetti_fig(
                 "hostname",
                 "gpu_model",
                 "duration_s",
+                "test_metrics_logged",
             ],
             "hovertemplate": (
                 "run_id=%{customdata[0]}<br>protein=%{customdata[1]}<br>"
                 "strategy=%{customdata[2]}<br>experiment=%{customdata[3]}<br>"
                 "epoch=%{x}<br>" + metric + "=%{y:.4f}<br>"
                 "host=%{customdata[4]}<br>gpu=%{customdata[5]}<br>"
-                "duration_s=%{customdata[6]:.0f}<extra></extra>"
+                "duration_s=%{customdata[6]:.0f}<br>"
+                "test metrics logged this epoch=%{customdata[7]}<extra></extra>"
             ),
         },
     )

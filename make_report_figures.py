@@ -145,21 +145,22 @@ def protein_figure(df: pd.DataFrame, protein: str) -> plt.Figure:
     fig.legend(
         handles,
         labels,
-        loc="upper right",
+        loc="upper left",
+        bbox_to_anchor=(0.01, 0.93),
         ncol=2,
         frameon=False,
         fontsize=9,
         labelcolor=TEXT_PRIMARY,
     )
     fig.suptitle(
-        f"{protein}: mean ± 1 std across runs",
+        f"{protein}: mean ± 1 std across runs (test metrics of best checkpoint so far)",
         x=0.01,
         ha="left",
         color=TEXT_PRIMARY,
         fontsize=13,
         fontweight="bold",
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
     return fig
 
 
@@ -193,15 +194,12 @@ def run_key(df: pd.DataFrame) -> pd.Series:
 
 
 def final_epoch_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """One row per completed run, carrying its best-validation checkpoint's test metrics.
+    """One row per completed run, at FINAL_EPOCH.
 
-    Test metrics are only logged when val_loss reaches a new best, so most late-epoch
-    checkpoints have none. Forward-filling within a run gives, at FINAL_EPOCH, the
-    test metrics of the best checkpoint so far -- the model a run would actually keep.
+    Test metrics there are the run's best-validation checkpoint's (see
+    build_dashboard_data.carry_forward_test_metrics).
     """
-    runs = df.assign(run=run_key).sort_values(["run", "epoch"])
-    runs[list(METRICS)] = runs.groupby("run")[list(METRICS)].ffill()
-    return runs[runs["epoch"] == FINAL_EPOCH]
+    return df[df["epoch"] == FINAL_EPOCH].assign(run=run_key)
 
 
 def bootstrap_mean_ci(

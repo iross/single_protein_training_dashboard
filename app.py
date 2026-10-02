@@ -76,6 +76,11 @@ def show_chart(fig, name: str) -> None:
         st.rerun()
 
 
+st.caption(
+    "Test metrics are logged only when validation loss reaches a new best, so each "
+    "epoch shows the test metrics of the run's best checkpoint so far."
+)
+
 tabs = st.tabs(
     [
         charts.METRIC_LABELS["test_loss"],

@@ -29,8 +29,10 @@ SOURCES = [
     {
         "db_path": DATA_DIR / "provenance.db",
         "dag_paths": [
-            DATA_DIR / "many_protein_pretraining_with_ospool_device_constrained_runs.dag",
-            DATA_DIR / "many_protein_pretraining_with_ospool_device_constrained_runs_run2.dag",
+            DATA_DIR
+            / "many_protein_pretraining_with_ospool_device_constrained_runs.dag",
+            DATA_DIR
+            / "many_protein_pretraining_with_ospool_device_constrained_runs_run2.dag",
         ],
         # June 2026 avgfp runs (DAGMan job 5424141) whose DAG was overwritten;
         # recovered from the jobs' HTCondor Args.
@@ -136,7 +138,9 @@ def parse_protein_map(dag_path: Path) -> pd.DataFrame:
         pairs[run_uuid] = protein
 
     if conflicts:
-        raise ValueError(f"run_uuid mapped to multiple proteins in {dag_path}: {conflicts}")
+        raise ValueError(
+            f"run_uuid mapped to multiple proteins in {dag_path}: {conflicts}"
+        )
 
     return pd.DataFrame(sorted(pairs.items()), columns=["run_id", "protein"])
 
@@ -185,6 +189,26 @@ def classify_training_strategy(metrics_df: pd.DataFrame) -> pd.Series:
     return n_gpu_models.gt(1).map({True: "mixed", False: "device_constrained"})
 
 
+TEST_METRICS = ["test_loss", "pearson_total_score"]
+
+
+def carry_forward_test_metrics(metrics_df: pd.DataFrame) -> pd.DataFrame:
+    """Fill each run's test metrics forward from its last logged value.
+
+    Test metrics are only logged when val_loss reaches a new best, so most
+    late-epoch checkpoints have none. After filling, a checkpoint's test metrics
+    are those of the run's best-validation checkpoint so far -- the model
+    training would select -- and every run contributes at every epoch.
+    test_metrics_logged marks the checkpoints whose values were logged directly.
+    """
+    ordered = metrics_df.sort_values(["run_id", "epoch"])
+    logged = ordered["test_loss"].notna()
+    filled = ordered.groupby("run_id")[TEST_METRICS].ffill()
+    return ordered.assign(
+        **{m: filled[m] for m in TEST_METRICS}, test_metrics_logged=logged
+    )
+
+
 def build_dashboard_data() -> tuple[pd.DataFrame, int]:
     """Load and combine all configured SOURCES.
 
@@ -196,7 +220,7 @@ def build_dashboard_data() -> tuple[pd.DataFrame, int]:
     frames = []
     n_unmapped = 0
     for source in SOURCES:
-        metrics = load_metrics(source["db_path"])
+        metrics = carry_forward_test_metrics(load_metrics(source["db_path"]))
         metrics["training_strategy"] = source.get(
             "training_strategy", classify_training_strategy(metrics)
         )
