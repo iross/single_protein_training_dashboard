@@ -12,7 +12,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project
 
-COPY pyproject.toml uv.lock app.py charts.py data.py build_dashboard_data.py ./
+COPY pyproject.toml uv.lock app.py charts.py data.py summaries.py build_dashboard_data.py ./
 COPY .streamlit/ ./.streamlit/
 COPY data/ ./data/
 

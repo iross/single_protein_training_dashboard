@@ -7,7 +7,7 @@ Streamlit dashboard for per-protein test_loss / pearson_total_score training met
 ```
 just run    # launch the dashboard locally
 just check  # headless smoke test
-just report-figures  # per-protein device_constrained vs mixed PNG/PDFs in figures/report/
+just report-figures  # device_constrained vs mixed figures (PNG/PDF) and summary tables (CSV/Markdown) in figures/report/
 ```
 
 ## Data layout

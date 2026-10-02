@@ -19,7 +19,7 @@ protein-map: sync
 build-data: protein-map
     uv run python build_dashboard_data.py
 
-# Render per-protein device_constrained vs mixed report figures into figures/report/
+# Render device_constrained vs mixed report figures and summary tables into figures/report/
 report-figures: sync
     uv run python make_report_figures.py
 

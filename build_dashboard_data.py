@@ -17,6 +17,8 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
+from summaries import TEST_METRICS
+
 REPO_ROOT = Path(__file__).parent
 DATA_DIR = REPO_ROOT / "data"
 
@@ -187,9 +189,6 @@ def classify_training_strategy(metrics_df: pd.DataFrame) -> pd.Series:
     """
     n_gpu_models = metrics_df.groupby("run_id")["gpu_model"].transform("nunique")
     return n_gpu_models.gt(1).map({True: "mixed", False: "device_constrained"})
-
-
-TEST_METRICS = ["test_loss", "pearson_total_score"]
 
 
 def carry_forward_test_metrics(metrics_df: pd.DataFrame) -> pd.DataFrame:

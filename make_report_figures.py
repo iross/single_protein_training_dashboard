@@ -7,7 +7,8 @@ and PDF files to figures/report/:
 
 Per-protein training curves go to <protein>.png/.pdf. Cross-protein summaries:
 final_epoch_summary, hardware_sensitivity, mixed_gpu_heatmap, gpu_switch_effect,
-time_overhead, and throughput_by_gpu.
+time_overhead, and throughput_by_gpu. Tables: overall_metrics.csv,
+strategy_summary.csv, run_summary.csv, and all but the per-run table in report_tables.md.
 
 Only the device_constrained and heterogeneous experiments and the
 device_constrained and mixed strategies are included, so DGX Spark and
@@ -26,6 +27,15 @@ import matplotlib.pyplot as plt  # noqa: E402 -- backend must be set before pypl
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
+
+from summaries import (  # noqa: E402
+    FINAL_EPOCH,
+    MIN_DURATION_S,
+    overall_metrics_table,
+    run_key,
+    run_summary,
+    strategy_summary_table,
+)
 
 REPO_ROOT = Path(__file__).parent
 DATA_PATH = REPO_ROOT / "data" / "dashboard_data.csv"
@@ -47,10 +57,7 @@ GRID = "#e4e3df"
 SURFACE = "#fcfcfb"
 NEUTRAL = "#8a8985"
 SWITCH_COLOR = "#4a3aa7"
-FINAL_EPOCH = 29
 MIN_EPOCHS_PER_GPU = 20
-# Shorter (or negative) epoch durations are timing artifacts in the logged data.
-MIN_DURATION_S = 60
 RNG_SEED = 0
 # GPU architecture families, oldest first, matched by substring of gpu_model.
 GPU_FAMILIES = {
@@ -186,11 +193,6 @@ def strategy_legend(fig: plt.Figure, df: pd.DataFrame) -> None:
         fontsize=9,
         labelcolor=TEXT_PRIMARY,
     )
-
-
-def run_key(df: pd.DataFrame) -> pd.Series:
-    """Unique run identity; run_ids can collide across experiments."""
-    return df["experiment"] + "/" + df["run_id"]
 
 
 def final_epoch_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -486,28 +488,9 @@ def gpu_switch_effect_figure(df: pd.DataFrame) -> plt.Figure:
 
 
 def run_timing(df: pd.DataFrame) -> pd.DataFrame:
-    """Wall-clock and compute hours for each run that completed training."""
-    runs = df.assign(run=run_key)
-    completed = runs.groupby("run")["epoch"].transform("max") == FINAL_EPOCH
-    runs = runs[completed].sort_values("produced_at_ts")
-    runs = runs.assign(
-        valid_duration_s=runs["duration_s"].where(
-            runs["duration_s"] >= MIN_DURATION_S, 0
-        )
-    )
-    timing = runs.groupby("run").agg(
-        strategy=("training_strategy", "first"),
-        first_ts=("produced_at_ts", "first"),
-        last_ts=("produced_at_ts", "last"),
-        first_duration_s=("duration_s", "first"),
-        compute_s=("valid_duration_s", "sum"),
-    )
-    first_duration = timing["first_duration_s"].clip(lower=0)
-    started = timing["first_ts"] - pd.to_timedelta(first_duration, unit="s")
-    timing["wall_h"] = (timing["last_ts"] - started).dt.total_seconds() / 3600
-    timing["compute_h"] = timing["compute_s"] / 3600
-    timing["compute_fraction"] = timing["compute_h"] / timing["wall_h"]
-    return timing
+    """run_summary rows for runs that completed training."""
+    summary = run_summary(df)
+    return summary[summary["completed"]]
 
 
 def time_overhead_figure(df: pd.DataFrame) -> plt.Figure:
@@ -631,6 +614,108 @@ def throughput_by_gpu_figure(df: pd.DataFrame) -> plt.Figure:
     return fig
 
 
+def markdown_table(rows: list[list[str]], header: list[str]) -> str:
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    lines += ["| " + " | ".join(row) + " |" for row in rows]
+    return "\n".join(lines)
+
+
+def overall_metrics_markdown(table: pd.DataFrame) -> str:
+    """Wide table: one row per protein, DC vs mixed mean ± std, and the difference."""
+    header = ["Protein"]
+    for metric, label in METRICS.items():
+        header += [f"{label} DC", f"{label} mixed", f"Δ {label} (mixed − DC)"]
+    header += ["n DC / mixed"]
+    rows = []
+    for protein, group in table.groupby("protein"):
+        by_strategy = group.set_index("strategy")
+        row = [protein]
+        for metric in METRICS:
+            digits = 3 if metric == "test_loss" else 5
+            cells = {}
+            for strategy in STRATEGIES:
+                if strategy in by_strategy.index:
+                    mean = by_strategy.loc[strategy, f"{metric}_mean"]
+                    std = by_strategy.loc[strategy, f"{metric}_std"]
+                    cells[strategy] = mean
+                    row.append(f"{mean:.{digits}f} ± {std:.{digits}f}")
+                else:
+                    row.append("—")
+            if len(cells) == len(STRATEGIES):
+                delta = cells["mixed"] - cells["device_constrained"]
+                row.append(f"{delta:+.{digits}f}")
+            else:
+                row.append("—")
+        counts = [
+            str(int(by_strategy.loc[s, "completed_runs"]))
+            if s in by_strategy.index
+            else "0"
+            for s in STRATEGIES
+        ]
+        rows.append([*row, " / ".join(counts)])
+    return markdown_table(rows, header)
+
+
+def strategy_summary_markdown(table: pd.DataFrame) -> str:
+    header = [
+        "Strategy",
+        "Runs",
+        "Completed",
+        "Median epochs",
+        "Median GPU models",
+        "Median hosts",
+        "Median GPU switches",
+        "Median wall clock (h)",
+        "Median compute (h)",
+        "Median compute fraction",
+    ]
+    rows = [
+        [
+            STRATEGIES[r.strategy]["label"],
+            f"{r.runs}",
+            f"{r.completed_runs}",
+            f"{r.median_epochs:.0f}",
+            f"{r.median_gpu_models:.0f}",
+            f"{r.median_hosts:.0f}",
+            f"{r.median_gpu_switches:.0f}",
+            f"{r.median_wall_h_completed:.0f}",
+            f"{r.median_compute_h_completed:.1f}",
+            f"{r.median_compute_fraction_completed:.2f}",
+        ]
+        for r in table.itertuples()
+    ]
+    return markdown_table(rows, header)
+
+
+def write_tables(df: pd.DataFrame) -> None:
+    """Write overall metrics, strategy summary, and per-run summary as CSV plus Markdown."""
+    summary = run_summary(df)
+    overall = overall_metrics_table(summary)
+    strategies = strategy_summary_table(summary)
+    overall.to_csv(OUT_DIR / "overall_metrics.csv", index=False)
+    strategies.to_csv(OUT_DIR / "strategy_summary.csv", index=False)
+    summary.reset_index(drop=True).to_csv(OUT_DIR / "run_summary.csv", index=False)
+    markdown = "\n\n".join(
+        [
+            "# Training run summary tables",
+            "## Final metrics by protein (completed runs)",
+            f"Test metrics of each run's best-validation checkpoint at epoch {FINAL_EPOCH}; "
+            "mean ± std across runs.",
+            overall_metrics_markdown(overall),
+            "## Runs by training strategy",
+            f"Wall clock and compute medians are over completed runs; compute sums epoch "
+            f"durations of at least {MIN_DURATION_S} s.",
+            strategy_summary_markdown(strategies),
+            "Per-run details (hardware, timing, final metrics) are in run_summary.csv.",
+        ]
+    )
+    (OUT_DIR / "report_tables.md").write_text(markdown + "\n")
+    print(
+        f"Wrote {OUT_DIR}/overall_metrics.csv, strategy_summary.csv, run_summary.csv, "
+        "report_tables.md"
+    )
+
+
 SUMMARY_FIGURES = {
     "final_epoch_summary": final_epoch_summary_figure,
     "hardware_sensitivity": hardware_sensitivity_figure,
@@ -648,6 +733,7 @@ def main() -> None:
         save(protein_figure(df[df["protein"] == protein], protein), protein)
     for name, build in SUMMARY_FIGURES.items():
         save(build(df), name)
+    write_tables(df)
 
 
 if __name__ == "__main__":
