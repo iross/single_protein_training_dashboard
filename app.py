@@ -12,7 +12,9 @@ df, n_unmapped = get_dashboard_data()
 st.sidebar.header("Filters")
 
 all_proteins = sorted(df["protein"].unique())
-selected_proteins = st.sidebar.multiselect("Proteins", all_proteins, default=all_proteins)
+selected_proteins = st.sidebar.multiselect(
+    "Proteins", all_proteins, default=all_proteins
+)
 
 all_strategies = sorted(df["training_strategy"].unique())
 selected_strategies = st.sidebar.multiselect(
@@ -32,6 +34,48 @@ if not selected_proteins or not selected_strategies:
     st.info("Select at least one protein and one training strategy in the sidebar.")
     st.stop()
 
+FOCUS_KEY = "focused_protein"
+GRID_CHART_PREFIX = "grid-chart-"
+
+
+def show_all_proteins() -> None:
+    """Leave focus mode; drop grid charts' stale click selections so they don't refocus."""
+    st.session_state.pop(FOCUS_KEY, None)
+    for key in [k for k in st.session_state if str(k).startswith(GRID_CHART_PREFIX)]:
+        del st.session_state[key]
+
+
+focused = st.session_state.get(FOCUS_KEY)
+if focused not in selected_proteins:
+    focused = None
+    st.session_state.pop(FOCUS_KEY, None)
+
+if focused:
+    chart_proteins = [focused]
+    st.button(f"← Back to all proteins (showing {focused})", on_click=show_all_proteins)
+else:
+    chart_proteins = selected_proteins
+    st.caption("Click a line in any panel to enlarge that protein.")
+
+
+def show_chart(fig, name: str) -> None:
+    """Render a chart; in the grid view, a click focuses the clicked protein."""
+    if focused:
+        st.plotly_chart(fig, width="stretch")
+        return
+    event = st.plotly_chart(
+        fig,
+        width="stretch",
+        key=GRID_CHART_PREFIX + name,
+        on_select="rerun",
+        selection_mode="points",
+    )
+    protein = charts.clicked_protein(fig, event.selection.points)
+    if protein:
+        st.session_state[FOCUS_KEY] = protein
+        st.rerun()
+
+
 tabs = st.tabs(
     [
         charts.METRIC_LABELS["test_loss"],
@@ -43,26 +87,26 @@ tabs = st.tabs(
 for tab, metric in zip(tabs[:2], ["test_loss", "pearson_total_score"]):
     with tab:
         st.subheader("Per-run trajectories")
-        st.plotly_chart(
-            charts.spaghetti_fig(df, metric, selected_proteins, selected_strategies),
-            width="stretch",
+        show_chart(
+            charts.spaghetti_fig(df, metric, chart_proteins, selected_strategies),
+            f"spaghetti-{metric}",
         )
 
-        st.subheader("Trend across training")
-        st.plotly_chart(
-            charts.trend_fig(df, metric, selected_proteins, selected_strategies),
-            width="stretch",
+        st.subheader("Mean ± std across runs")
+        show_chart(
+            charts.trend_fig(df, metric, chart_proteins, selected_strategies),
+            f"trend-{metric}",
         )
 
-        st.subheader("Variance across runs")
-        st.plotly_chart(
-            charts.variance_fig(df, metric, selected_proteins, selected_strategies),
-            width="stretch",
+        st.subheader("Run-to-run variation")
+        show_chart(
+            charts.variance_fig(df, metric, chart_proteins, selected_strategies),
+            f"variance-{metric}",
         )
 
 with tabs[2]:
     st.subheader("Cumulative epochs completed over time")
-    st.plotly_chart(
-        charts.epochs_over_time_fig(df, selected_proteins, selected_strategies),
-        width="stretch",
+    show_chart(
+        charts.epochs_over_time_fig(df, chart_proteins, selected_strategies),
+        "epochs-over-time",
     )
