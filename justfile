@@ -19,6 +19,10 @@ protein-map: sync
 build-data: sync
     uv run python build_dashboard_data.py
 
+# Render per-protein device_constrained vs mixed report figures into figures/report/
+report-figures: sync
+    uv run python make_report_figures.py
+
 # Rebuild the raw provenance databases on ap2002 (see data_compilation.md), scp them and the DAGs down
 update-data:
     ssh ap2002.chtc.wisc.edu ' \
