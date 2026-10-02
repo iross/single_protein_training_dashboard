@@ -15,8 +15,8 @@ run: sync
 protein-map: sync
     uv run python generate_protein_maps.py
 
-# Rebuild data/dashboard_data.csv from the raw databases and protein maps
-build-data: sync
+# Regenerate protein maps, then rebuild data/dashboard_data.csv from the raw databases
+build-data: protein-map
     uv run python build_dashboard_data.py
 
 # Render per-protein device_constrained vs mixed report figures into figures/report/
