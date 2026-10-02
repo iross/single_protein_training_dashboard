@@ -3,6 +3,7 @@
 import streamlit as st
 
 import charts
+import summaries
 from data import get_dashboard_data
 
 st.set_page_config(page_title="Training metrics dashboard", layout="wide")
@@ -81,11 +82,37 @@ st.caption(
     "epoch shows the test metrics of the run's best checkpoint so far."
 )
 
+
+def filter_run_table(run_table):
+    """Filter controls in one row above the per-run table; returns the matching rows."""
+    protein_col, experiment_col, status_col, search_col = st.columns([3, 3, 2, 2])
+    proteins = sorted(run_table["protein"].unique())
+    chosen_proteins = protein_col.multiselect(
+        "Protein", proteins, default=proteins, key="runs-protein"
+    )
+    experiments = sorted(run_table["experiment"].unique())
+    chosen_experiments = experiment_col.multiselect(
+        "Experiment", experiments, default=experiments, key="runs-experiment"
+    )
+    status = status_col.selectbox(
+        "Status", ["All", "Completed", "Incomplete"], key="runs-status"
+    )
+    run_id_query = search_col.text_input("run_id contains", key="runs-run-id").strip()
+    mask = run_table["protein"].isin(chosen_proteins)
+    mask &= run_table["experiment"].isin(chosen_experiments)
+    if status != "All":
+        mask &= run_table["completed"] == (status == "Completed")
+    if run_id_query:
+        mask &= run_table["run_id"].str.contains(run_id_query, case=False, regex=False)
+    return run_table[mask]
+
+
 tabs = st.tabs(
     [
         charts.METRIC_LABELS["test_loss"],
         charts.METRIC_LABELS["pearson_total_score"],
         "Training progress",
+        "Run summary",
     ]
 )
 
@@ -114,4 +141,77 @@ with tabs[2]:
     show_chart(
         charts.epochs_over_time_fig(df, chart_proteins, selected_strategies),
         "epochs-over-time",
+    )
+
+with tabs[3]:
+    filtered = df[
+        df["protein"].isin(chart_proteins)
+        & df["training_strategy"].isin(selected_strategies)
+    ]
+    run_table = summaries.run_summary(filtered)
+    test_cols = {"test_loss": "Test loss", "pearson_total_score": "Pearson"}
+
+    st.subheader("Final metrics by protein and strategy")
+    st.caption(
+        f"Completed runs only (reached epoch {summaries.FINAL_EPOCH}); test metrics of each "
+        "run's best-validation checkpoint."
+    )
+    overall = summaries.overall_metrics_table(run_table)
+    st.dataframe(
+        overall,
+        hide_index=True,
+        column_config={
+            "completed_runs": "Completed runs",
+            **{
+                f"{m}_{stat}": st.column_config.NumberColumn(
+                    f"{label} {stat}",
+                    format="%.5f" if m == "pearson_total_score" else "%.3f",
+                )
+                for m, label in test_cols.items()
+                for stat in ("mean", "std")
+            },
+        },
+    )
+
+    st.subheader("Runs by training strategy")
+    st.caption(
+        "Wall-clock and compute medians are over completed runs; compute sums epoch "
+        f"durations of at least {summaries.MIN_DURATION_S} s."
+    )
+    st.dataframe(
+        summaries.strategy_summary_table(run_table),
+        hide_index=True,
+        column_config={
+            "median_wall_h_completed": st.column_config.NumberColumn(
+                "median wall clock (h)", format="%.0f"
+            ),
+            "median_compute_h_completed": st.column_config.NumberColumn(
+                "median compute (h)", format="%.1f"
+            ),
+            "median_compute_fraction_completed": st.column_config.NumberColumn(
+                "median compute fraction", format="%.2f"
+            ),
+        },
+    )
+
+    st.subheader("All runs")
+    shown_runs = filter_run_table(run_table)
+    st.caption(f"{len(shown_runs)} of {len(run_table)} runs")
+    st.dataframe(
+        shown_runs.reset_index(drop=True),
+        hide_index=True,
+        column_config={
+            "first_ts": st.column_config.DatetimeColumn("first checkpoint"),
+            "last_ts": st.column_config.DatetimeColumn("last checkpoint"),
+            "best_val_loss": st.column_config.NumberColumn(format="%.3f"),
+            "test_loss": st.column_config.NumberColumn(
+                "test loss (best ckpt)", format="%.3f"
+            ),
+            "pearson_total_score": st.column_config.NumberColumn(
+                "Pearson (best ckpt)", format="%.5f"
+            ),
+            "wall_h": st.column_config.NumberColumn("wall clock (h)", format="%.0f"),
+            "compute_h": st.column_config.NumberColumn("compute (h)", format="%.1f"),
+            "compute_fraction": st.column_config.NumberColumn(format="%.2f"),
+        },
     )
