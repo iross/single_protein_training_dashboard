@@ -23,7 +23,8 @@ DATA_DIR = REPO_ROOT / "data"
 # dag_paths lists every DAG submitted for a source (e.g. a _run2.dag rerun);
 # their run_id -> protein maps are combined into one CSV per experiment.
 # extra_protein_maps lists hand-written run_id,protein CSVs for runs whose DAG
-# file no longer exists.
+# file no longer exists. A fixed training_strategy labels every run in the
+# source instead of classifying runs by GPU model variance.
 SOURCES = [
     {
         "db_path": DATA_DIR / "provenance.db",
@@ -45,8 +46,6 @@ SOURCES = [
         "experiment": "heterogeneous",
     },
     {
-        # Labeled with its own training strategy instead of being classified
-        # by GPU model variance.
         "db_path": DATA_DIR / "dgxspark.db",
         "dag_paths": [DATA_DIR / "many_protein_pretraining_dgx_spark.dag"],
         "experiment": "dgxspark",
@@ -54,8 +53,10 @@ SOURCES = [
     },
     {
         "db_path": DATA_DIR / "metl_updates.db",
+        # Same training setup rerun with updated software libraries.
         "dag_paths": [DATA_DIR / "many_protein_pretraining_updated_metl.dag"],
         "experiment": "metl_updates",
+        "training_strategy": "updated_metl",
     },
 ]
 
